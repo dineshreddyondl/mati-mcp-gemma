@@ -1,11 +1,11 @@
-FROM --platform=linux/amd64 node:20-alpine AS client-build
+FROM node:20-alpine AS client-build
 WORKDIR /app/client
 COPY client/package.json client/package-lock.json* ./
 RUN npm install
 COPY client/ ./
 RUN npx vite build
 
-FROM --platform=linux/amd64 node:20-alpine AS server-build
+FROM node:20-alpine AS server-build
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
@@ -13,7 +13,7 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npx tsc
 
-FROM --platform=linux/amd64 node:20-alpine
+FROM node:20-alpine
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
