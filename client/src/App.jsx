@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 
+const API_URL = import.meta.env.VITE_API_URL || ""
+
 const SUGGESTIONS = [
   "What collections do we have?",
   "How many total orders?",
@@ -38,7 +40,7 @@ export default function App() {
     setLoading(true)
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
