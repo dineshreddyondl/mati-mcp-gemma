@@ -141,7 +141,7 @@ function getMCPTools() {
 
 // ── Express app ──────────────────────────────────────────────────────
 const app = express();
-app.use(cors());
+app.use(cors({ origin: "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
 app.use(express.json());
 
 // Serve the React frontend from client/dist (only if built)
