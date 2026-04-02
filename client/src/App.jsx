@@ -4,10 +4,10 @@ import ReactMarkdown from 'react-markdown'
 const API_URL = import.meta.env.VITE_API_URL || ""
 
 const SUGGESTIONS = [
-  "What collections do we have?",
-  "How many total orders?",
-  "Show me latest 5 orders",
-  "Count orders by status",
+  "How was last month performance?",
+  "What are the pending orders?",
+  "what are the aging orders more than 10 days",
+  "what are the top ten routes operating?",
 ]
 
 export default function App() {
