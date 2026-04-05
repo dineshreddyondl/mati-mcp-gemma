@@ -1,11 +1,9 @@
 /**
- * Ollama client for Gemma 3 (local).
- * Drop-in replacement for the Together/DeepSeek client.
- * Ollama exposes an OpenAI-compatible /v1/chat/completions endpoint.
+ * llm.ts — Ollama client for local LLM inference.
+ * Reads all config from config.ts. Never hardcodes model names or URLs.
  */
-
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const MODEL = process.env.OLLAMA_MODEL || "gemma3:12b";
+import "./env.js";
+import { config } from "./config.js";
 
 interface Message {
   role: "system" | "user" | "assistant" | "tool";
@@ -44,9 +42,15 @@ interface CompletionResponse {
 }
 
 export class OllamaClient {
-  /**
-   * Send a chat completion request to local Ollama with tool support.
-   */
+  private baseUrl: string;
+  private model: string;
+
+  constructor() {
+    this.baseUrl = config.ollama.baseUrl;
+    this.model = config.ollama.model;
+    console.log(`[Mati] LLM configured → ${this.baseUrl} | model: ${this.model}`);
+  }
+
   async chat(
     messages: Message[],
     tools?: ToolDefinition[]
@@ -56,12 +60,12 @@ export class OllamaClient {
     finishReason: string;
   }> {
     const body: Record<string, unknown> = {
-      model: MODEL,
+      model: this.model,
       messages,
       stream: false,
       options: {
-        temperature: 0.1, // Low temp for accurate data reporting
-        num_predict: 4096,
+        temperature: config.ollama.temperature,
+        num_predict: config.ollama.maxTokens,
       },
     };
 
@@ -70,11 +74,9 @@ export class OllamaClient {
       body.tool_choice = "auto";
     }
 
-    const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
@@ -82,7 +84,8 @@ export class OllamaClient {
       const errorText = await response.text();
       throw new Error(
         `Ollama error (${response.status}): ${errorText}\n` +
-          `Make sure Ollama is running: run 'ollama serve' in a terminal.`
+        `Model: ${this.model} at ${this.baseUrl}\n` +
+        `Make sure Ollama is running: run 'ollama serve' in a terminal.`
       );
     }
 
@@ -94,6 +97,14 @@ export class OllamaClient {
       toolCalls: choice.message.tool_calls || [],
       finishReason: choice.finish_reason,
     };
+  }
+
+  getModel(): string {
+    return this.model;
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 }
 
