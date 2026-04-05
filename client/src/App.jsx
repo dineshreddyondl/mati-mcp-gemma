@@ -1,223 +1,193 @@
-import { useState, useEffect, useRef } from "react";
+/**
+ * App.jsx — Mati main app.
+ * Wires together Header, Sidebar, ChatArea, InputBar.
+ * Manages conversations, mode, dark mode, API calls.
+ */
+import { useState, useEffect } from "react";
+import Header, { MODES } from "./components/Header.jsx";
+import Sidebar from "./components/Sidebar.jsx";
+import ChatArea from "./components/ChatArea.jsx";
+import InputBar from "./components/InputBar.jsx";
+import { useConversations } from "./hooks/useConversations.js";
 
-// In production (Mac Mini), API is on the same host
-// In dev (MacBook), set VITE_API_URL in client/.env.local to point to Mac Mini
 const API_URL = import.meta.env.VITE_API_URL || "";
 
-function ModelBadge({ model, status }) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 6,
-      fontSize: 12, color: status === "ok" ? "#16a34a" : "#dc2626",
-      background: status === "ok" ? "#f0fdf4" : "#fef2f2",
-      border: `1px solid ${status === "ok" ? "#bbf7d0" : "#fecaca"}`,
-      borderRadius: 6, padding: "3px 10px"
-    }}>
-      <span style={{
-        width: 7, height: 7, borderRadius: "50%",
-        background: status === "ok" ? "#16a34a" : "#dc2626",
-        display: "inline-block"
-      }} />
-      {status === "ok" ? model : "Ollama offline"}
-    </div>
-  );
-}
-
-function Message({ msg }) {
-  const isUser = msg.role === "user";
-  return (
-    <div style={{
-      display: "flex", justifyContent: isUser ? "flex-end" : "flex-start",
-      marginBottom: 16
-    }}>
-      <div style={{
-        maxWidth: "75%",
-        background: isUser ? "#1d4ed8" : "var(--msg-bg, #f1f5f9)",
-        color: isUser ? "#fff" : "inherit",
-        borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-        padding: "10px 16px",
-        fontSize: 14,
-        lineHeight: 1.6,
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-word"
-      }}>
-        {msg.content}
-        {msg.toolsUsed?.length > 0 && (
-          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.6 }}>
-            Used: {msg.toolsUsed.join(", ")}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
+  const [dark, setDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const [mode, setMode] = useState("internal");
+  const [health, setHealth] = useState({ status: "checking", model: "Gemma 3 8B" });
   const [loading, setLoading] = useState(false);
-  const [health, setHealth] = useState({ status: "checking", model: "...", database: "" });
-  const [darkMode, setDarkMode] = useState(false);
-  const bottomRef = useRef(null);
+  const [queueInfo, setQueueInfo] = useState(null);
+  const [documentContent, setDocumentContent] = useState(null);
 
-  // Check health on mount
+  const {
+    grouped, activeId, activeConversation,
+    newConversation, addMessage, updateMode,
+    deleteConversation, selectConversation,
+  } = useConversations();
+
+  // Fetch health on mount
   useEffect(() => {
     fetch(`${API_URL}/api/health`)
-      .then(r => r.json())
-      .then(data => setHealth(data))
-      .catch(() => setHealth({ status: "error", model: "offline", database: "" }));
+      .then((r) => r.json())
+      .then((d) => setHealth(d))
+      .catch(() => setHealth({ status: "error", model: "Offline" }));
   }, []);
 
-  // Scroll to bottom on new messages
+  // Start a new conversation on first load if none exist
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    if (!activeId) newConversation(mode);
+  }, []);
 
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || loading) return;
+  // Sync mode to active conversation
+  useEffect(() => {
+    if (activeConversation && activeConversation.mode !== mode) {
+      setMode(activeConversation.mode);
+    }
+  }, [activeId]);
 
-    const userMsg = { role: "user", content: text };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput("");
+  const handleModeChange = (newMode) => {
+    setMode(newMode);
+    if (activeId) updateMode(activeId, newMode);
+  };
+
+  const handleNewChat = () => {
+    const id = newConversation(mode);
+    setDocumentContent(null);
+  };
+
+  const handleSelectConversation = (id) => {
+    selectConversation(id);
+    setDocumentContent(null);
+  };
+
+  const handleSend = async (text) => {
+    if (!text.trim() || loading) return;
+
+    // Ensure there's an active conversation
+    const convId = activeId || newConversation(mode);
+
+    const userMsg = { role: "user", content: text, mode };
+    addMessage(convId, userMsg);
     setLoading(true);
+    setQueueInfo(null);
 
     try {
+      const history = activeConversation
+        ? [...activeConversation.messages, userMsg]
+        : [userMsg];
+
       const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role, content: m.content }))
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          mode,
+          documentContent: mode === "document" ? documentContent : undefined,
         }),
       });
+
       const data = await res.json();
+
       if (data.error) throw new Error(data.error);
-      setMessages(prev => [...prev, {
+
+      if (data.queuePosition > 0) {
+        setQueueInfo({ position: data.queuePosition, estimatedWait: data.estimatedWait });
+      }
+
+      addMessage(convId, {
         role: "assistant",
         content: data.content,
-        toolsUsed: data.toolsUsed
-      }]);
+        mode,
+        toolsUsed: data.toolsUsed,
+      });
     } catch (err) {
-      setMessages(prev => [...prev, {
+      addMessage(convId, {
         role: "assistant",
-        content: `Something went wrong: ${err.message}`
-      }]);
+        content: `Something went wrong: ${err.message}`,
+        mode,
+      });
     } finally {
       setLoading(false);
+      setQueueInfo(null);
     }
   };
 
-  const bg = darkMode ? "#0f172a" : "#f8fafc";
-  const surface = darkMode ? "#1e293b" : "#ffffff";
-  const border = darkMode ? "#334155" : "#e2e8f0";
-  const text = darkMode ? "#f1f5f9" : "#0f172a";
-  const msgBg = darkMode ? "#1e293b" : "#f1f5f9";
+  const messages = activeConversation?.messages || [];
+  const bg = dark ? "#0f172a" : "#f8fafc";
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: bg, color: text, fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: bg, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <Header
+        mode={mode}
+        onModeChange={handleModeChange}
+        dark={dark}
+        onToggleDark={() => setDark((d) => !d)}
+        model={health.model}
+      />
 
-      {/* Header */}
-      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${border}`, background: surface, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.5 }}>Mati</span>
-          <span style={{ fontSize: 13, color: darkMode ? "#94a3b8" : "#64748b" }}>ONDL Data Reporter</span>
-          {health.database && (
-            <span style={{ fontSize: 11, color: darkMode ? "#64748b" : "#94a3b8" }}>
-              db: {health.database}
-            </span>
-          )}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <ModelBadge model={health.model} status={health.status} />
-          <button
-            onClick={() => setDarkMode(d => !d)}
-            style={{ background: "none", border: `1px solid ${border}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", color: text, fontSize: 13 }}
-          >
-            {darkMode ? "Light" : "Dark"}
-          </button>
-          {messages.length > 0 && (
-            <button
-              onClick={() => setMessages([])}
-              style={{ background: "none", border: `1px solid ${border}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", color: text, fontSize: 13 }}
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px", "--msg-bg": msgBg }}>
-        {messages.length === 0 && (
-          <div style={{ textAlign: "center", marginTop: 80, color: darkMode ? "#475569" : "#94a3b8" }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
-            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: darkMode ? "#94a3b8" : "#64748b" }}>Ask Mati anything about ONDL orders</div>
-            <div style={{ fontSize: 13, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
-              {["How many orders this month?", "Revenue by company", "Order status breakdown", "Show latest 5 orders"].map(q => (
-                <button key={q} onClick={() => setInput(q)} style={{
-                  background: surface, border: `1px solid ${border}`,
-                  borderRadius: 20, padding: "6px 14px", cursor: "pointer",
-                  color: text, fontSize: 13
-                }}>{q}</button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
-
-        {loading && (
-          <div style={{ display: "flex", gap: 4, padding: "10px 16px" }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{
-                width: 8, height: 8, borderRadius: "50%",
-                background: "#1d4ed8", opacity: 0.4,
-                animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`
-              }} />
-            ))}
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input */}
-      <div style={{ padding: "12px 20px", borderTop: `1px solid ${border}`, background: surface, display: "flex", gap: 10 }}>
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
-          placeholder="Ask about orders, revenue, delivery rates..."
-          disabled={loading}
-          style={{
-            flex: 1, padding: "10px 16px", borderRadius: 10,
-            border: `1px solid ${border}`, background: bg,
-            color: text, fontSize: 14, outline: "none"
-          }}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <Sidebar
+          grouped={grouped}
+          activeId={activeId}
+          onSelect={handleSelectConversation}
+          onNew={handleNewChat}
+          onDelete={deleteConversation}
+          dark={dark}
         />
-        <button
-          onClick={sendMessage}
-          disabled={loading || !input.trim()}
-          style={{
-            padding: "10px 20px", borderRadius: 10, border: "none",
-            background: loading || !input.trim() ? (darkMode ? "#334155" : "#e2e8f0") : "#1d4ed8",
-            color: loading || !input.trim() ? (darkMode ? "#64748b" : "#94a3b8") : "#fff",
-            fontSize: 14, fontWeight: 600, cursor: loading || !input.trim() ? "not-allowed" : "pointer"
-          }}
-        >
-          Send
-        </button>
-      </div>
 
-      <style>{`
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); opacity: 0.4; }
-          50% { transform: translateY(-6px); opacity: 1; }
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: ${border}; border-radius: 2px; }
-      `}</style>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Mode context bar */}
+          <ModeContextBar mode={mode} dark={dark} />
+
+          <ChatArea
+            messages={messages}
+            loading={loading}
+            queueInfo={queueInfo}
+            mode={mode}
+            dark={dark}
+          />
+
+          <InputBar
+            mode={mode}
+            onSend={handleSend}
+            loading={loading}
+            dark={dark}
+            onDocumentLoad={(content) => setDocumentContent(content)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModeContextBar({ mode, dark }) {
+  const meta = {
+    internal: {
+      text: "Internal data mode — queries run against ONDL MongoDB",
+      bg: dark ? "#0c1626" : "#eff6ff",
+      color: dark ? "#60a5fa" : "#1d4ed8",
+    },
+    general: {
+      text: "General mode — ask anything, no database access",
+      bg: dark ? "#052e16" : "#f0fdf4",
+      color: dark ? "#4ade80" : "#166534",
+    },
+    document: {
+      text: "Document mode — upload a file and ask questions about it",
+      bg: dark ? "#1c1400" : "#fffbeb",
+      color: dark ? "#fbbf24" : "#92400e",
+    },
+  }[mode];
+
+  return (
+    <div style={{
+      padding: "5px 16px", fontSize: 11,
+      background: meta.bg, color: meta.color,
+      borderBottom: `0.5px solid ${dark ? "#334155" : "#e2e8f0"}`,
+      flexShrink: 0,
+    }}>
+      {meta.text}
     </div>
   );
 }
