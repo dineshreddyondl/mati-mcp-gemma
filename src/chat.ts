@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, "..", ".env") });
 
-import { TogetherClient, mcpToolsToLLMTools } from "./llm.js";
+import { OllamaClient, mcpToolsToLLMTools } from "./llm.js";
 import type { Message, ToolCall } from "./llm.js";
 import { logSecurityConfig } from "./security.js";
 import { getDatabase, closeDatabase } from "./mongo.js";
@@ -165,9 +165,9 @@ async function main() {
   }
 
   // Initialize Together client
-  let llm: TogetherClient;
+  let llm: OllamaClient;
   try {
-    llm = new TogetherClient();
+    llm = new OllamaClient();
     console.log("[Mati] Connected to Together API (DeepSeek-V3)");
   } catch (error) {
     console.error("[Mati]", error instanceof Error ? error.message : error);

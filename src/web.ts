@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: resolve(__dirname, "..", ".env") });
 
-import { TogetherClient, mcpToolsToLLMTools } from "./llm.js";
+import { OllamaClient, mcpToolsToLLMTools } from "./llm.js";
 import type { Message, ToolDefinition } from "./llm.js";
 import { logSecurityConfig } from "./security.js";
 import { getDatabase, closeDatabase } from "./mongo.js";
@@ -151,7 +151,7 @@ if (clientBuilt) {
   app.use(express.static(clientPath));
 }
 
-let llm: TogetherClient;
+let llm: OllamaClient;
 let tools: ToolDefinition[];
 
 // ── Chat endpoint ────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ async function main() {
   await getDatabase();
   console.log("");
 
-  llm = new TogetherClient();
+  llm = new OllamaClient();
   tools = mcpToolsToLLMTools(getMCPTools());
   console.log("[Mati] Together API ready");
 
