@@ -1,10 +1,11 @@
 /**
- * Together API client for DeepSeek-V3.
- * Handles sending messages, tool definitions, and processing tool calls.
+ * Ollama client for Gemma 3 (local).
+ * Drop-in replacement for the Together/DeepSeek client.
+ * Ollama exposes an OpenAI-compatible /v1/chat/completions endpoint.
  */
 
-const TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions";
-const MODEL = "deepseek-ai/DeepSeek-V3.1";
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+const MODEL = process.env.OLLAMA_MODEL || "gemma3:12b";
 
 interface Message {
   role: "system" | "user" | "assistant" | "tool";
@@ -42,22 +43,9 @@ interface CompletionResponse {
   }[];
 }
 
-export class TogetherClient {
-  private apiKey: string;
-
-  constructor() {
-    const key = process.env.TOGETHER_API_KEY;
-    if (!key) {
-      throw new Error(
-        "TOGETHER_API_KEY environment variable is not set. " +
-          "Get your key from https://api.together.xyz/settings/api-keys"
-      );
-    }
-    this.apiKey = key;
-  }
-
+export class OllamaClient {
   /**
-   * Send a chat completion request to Together API with tool support.
+   * Send a chat completion request to local Ollama with tool support.
    */
   async chat(
     messages: Message[],
@@ -70,8 +58,11 @@ export class TogetherClient {
     const body: Record<string, unknown> = {
       model: MODEL,
       messages,
-      max_tokens: 4096,
-      temperature: 0.1, // Low temp for accurate data reporting
+      stream: false,
+      options: {
+        temperature: 0.1, // Low temp for accurate data reporting
+        num_predict: 4096,
+      },
     };
 
     if (tools && tools.length > 0) {
@@ -79,11 +70,10 @@ export class TogetherClient {
       body.tool_choice = "auto";
     }
 
-    const response = await fetch(TOGETHER_API_URL, {
+    const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
     });
@@ -91,7 +81,8 @@ export class TogetherClient {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `Together API error (${response.status}): ${errorText}`
+        `Ollama error (${response.status}): ${errorText}\n` +
+          `Make sure Ollama is running: run 'ollama serve' in a terminal.`
       );
     }
 
@@ -107,7 +98,7 @@ export class TogetherClient {
 }
 
 /**
- * Convert MCP tool schemas to Together/OpenAI-compatible tool definitions.
+ * Convert MCP tool schemas to Ollama/OpenAI-compatible tool definitions.
  */
 export function mcpToolsToLLMTools(
   mcpTools: {
