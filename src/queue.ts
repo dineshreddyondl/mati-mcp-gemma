@@ -6,7 +6,7 @@
 
 interface QueueEntry {
   id: string;
-  execute: () => Promise<string>;
+  execute: () => Promise<{ content: string; toolsUsed: string[] }>;
   resolve: (value: { content: string; toolsUsed: string[] }) => void;
   reject: (reason: Error) => void;
   enqueuedAt: number;

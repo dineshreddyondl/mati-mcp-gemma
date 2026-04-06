@@ -1,138 +1,127 @@
 /**
- * Header.jsx — top bar with ONDL logo, mode switcher, model badge, dark toggle.
+ * Header.jsx — Su-Mati top bar
+ * Left: ONDL logo | Su-Mati + Mac Mini status | Powered by Google Gemma
+ * Right: mode switcher (radio style) + dark/light icon toggle
  */
+
 const MODES = [
   {
     id: "internal",
-    label: "Internal data",
-    color: "#1d4ed8",
-    darkColor: "#60a5fa",
-    bgColor: "#eff6ff",
-    darkBgColor: "#1e3a5f",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" opacity=".9"/>
-        <rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor"/>
-        <rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" opacity=".4"/>
-        <rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" opacity=".7"/>
-      </svg>
-    ),
+    label: "ONDL Order reporting",
+    icon: (<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor"/><rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/><rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" opacity=".3"/><rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/></svg>),
+    active: { bg: "#eff6ff", border: "#1d4ed8", color: "#1d4ed8" },
+    activeDark: { bg: "#1e3a5f", border: "#3b82f6", color: "#60a5fa" },
   },
   {
     id: "general",
-    label: "General",
-    color: "#16a34a",
-    darkColor: "#4ade80",
-    bgColor: "#f0fdf4",
-    darkBgColor: "#052e16",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
-        <circle cx="8" cy="8" r="2" fill="currentColor" opacity=".5"/>
-        <path d="M8 2.5v1M8 12.5v1M2.5 8h1M12.5 8h1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-      </svg>
-    ),
+    label: "General context",
+    icon: (<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="8" cy="8" r="2" fill="currentColor" opacity=".5"/></svg>),
+    active: { bg: "#f0fdf4", border: "#16a34a", color: "#16a34a" },
+    activeDark: { bg: "#052e16", border: "#22c55e", color: "#4ade80" },
   },
   {
     id: "document",
-    label: "Document",
-    color: "#d97706",
-    darkColor: "#fbbf24",
-    bgColor: "#fffbeb",
-    darkBgColor: "#1c1400",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <rect x="3" y="1" width="10" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
-        <path d="M5 5h6M5 8h6M5 11h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-      </svg>
-    ),
+    label: "Document analysis",
+    icon: (<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.2"/><path d="M5 5h6M5 8h6M5 11h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>),
+    active: { bg: "#fffbeb", border: "#d97706", color: "#d97706" },
+    activeDark: { bg: "#1c1400", border: "#f59e0b", color: "#fbbf24" },
   },
 ];
 
-export default function Header({ mode, onModeChange, dark, onToggleDark, model }) {
-  const activeMode = MODES.find((m) => m.id === mode) || MODES[0];
-  const modeColor = dark ? activeMode.darkColor : activeMode.color;
+export default function Header({ mode, onModeChange, dark, onToggleDark, macOnline }) {
+  const border = dark ? "#30363d" : "#e5e7eb";
+  const bg = dark ? "#161b22" : "#ffffff";
+  const muted = dark ? "#8b949e" : "#6b7280";
 
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "0 16px", height: 54,
-      background: dark ? "#1e293b" : "#ffffff",
-      borderBottom: `0.5px solid ${dark ? "#334155" : "#e2e8f0"}`,
-      gap: 12, flexShrink: 0,
+      padding: "0 20px", height: 60, background: bg,
+      borderBottom: `0.5px solid ${border}`,
+      gap: 16, flexShrink: 0,
+      fontFamily: "'Inter', system-ui, sans-serif",
     }}>
-      {/* Logo */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+
+      {/* ── Left ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <img src="/ondl-logo.svg" alt="ONDL" style={{ height: 20, filter: dark ? "brightness(0) invert(1)" : "none" }} />
-        <span style={{
-          fontSize: 13, fontWeight: 600, color: dark ? "#94a3b8" : "#64748b",
-          borderLeft: `1px solid ${dark ? "#334155" : "#e2e8f0"}`,
-          paddingLeft: 10, letterSpacing: "0.01em"
-        }}>Mati</span>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 5,
-          fontSize: 11, background: dark ? "#052e16" : "#f0fdf4",
-          color: dark ? "#4ade80" : "#166534",
-          border: `0.5px solid ${dark ? "#166534" : "#bbf7d0"}`,
-          borderRadius: 20, padding: "3px 9px",
-        }}>
-          <div style={{
-            width: 6, height: 6, borderRadius: "50%", background: "#16a34a",
-            animation: "pulse 2s ease-in-out infinite",
-          }} />
-          Mac Mini
+        <div style={{ width: 1, height: 22, background: border }} />
+
+        {/* Su-Mati + Mac Mini status */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.3px", color: dark ? "#e6edf3" : "#111827", lineHeight: 1 }}>
+            Su-Mati
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+              background: macOnline ? "#22c55e" : "#ef4444",
+              animation: macOnline ? "pulse 2s infinite" : "none",
+            }} />
+            <span style={{ fontSize: 10, fontWeight: 500, color: macOnline ? "#16a34a" : "#ef4444" }}>
+              {macOnline ? "Running on Mac Mini" : "Mac Mini offline"}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ width: 1, height: 22, background: border }} />
+
+        {/* Powered by Google Gemma */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ display: "flex", gap: 2 }}>
+            {["#4285f4","#ea4335","#fbbc04","#34a853"].map((c, i) => (
+              <div key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: c }} />
+            ))}
+          </div>
+          <span style={{ fontSize: 11, color: muted }}>Powered by Google Gemma</span>
         </div>
       </div>
 
-      {/* Mode switcher */}
-      <div style={{
-        display: "flex", gap: 3,
-        background: dark ? "#0f172a" : "#f1f5f9",
-        borderRadius: 10, padding: 3, flexShrink: 0,
-      }}>
-        {MODES.map((m) => {
-          const isActive = m.id === mode;
-          const color = dark ? m.darkColor : m.color;
-          return (
-            <button key={m.id} onClick={() => onModeChange(m.id)} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              fontSize: 12, padding: "6px 14px", borderRadius: 7,
-              border: isActive ? `0.5px solid ${dark ? "#334155" : "#e2e8f0"}` : "none",
-              background: isActive ? (dark ? "#1e293b" : "#ffffff") : "transparent",
-              color: isActive ? color : (dark ? "#94a3b8" : "#64748b"),
-              fontWeight: isActive ? 500 : 400,
-              cursor: "pointer", whiteSpace: "nowrap",
-            }}>
-              {m.icon}
-              {m.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Right side */}
+      {/* ── Right ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <div style={{
-          fontSize: 11, color: dark ? "#c4b5fd" : "#7c3aed",
-          background: dark ? "#2e1065" : "#f5f3ff",
-          border: `0.5px solid ${dark ? "#4c1d95" : "#ddd6fe"}`,
-          borderRadius: 6, padding: "3px 9px",
-          display: "flex", alignItems: "center", gap: 5,
-        }}>
-          <div style={{ width: 5, height: 5, borderRadius: "50%", background: dark ? "#c4b5fd" : "#7c3aed" }} />
-          {model || "Gemma 3 8B"}
+        {/* Mode switcher */}
+        <div style={{ display: "flex", gap: 5 }}>
+          {MODES.map((m) => {
+            const isActive = m.id === mode;
+            const s = dark ? (isActive ? m.activeDark : null) : (isActive ? m.active : null);
+            return (
+              <button key={m.id} onClick={() => onModeChange(m.id)} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "6px 14px", borderRadius: 100,
+                border: `1.5px solid ${isActive ? (s?.border || border) : border}`,
+                background: isActive ? (s?.bg || "transparent") : "transparent",
+                color: isActive ? (s?.color || muted) : muted,
+                fontSize: 12, fontWeight: isActive ? 600 : 500,
+                cursor: "pointer", whiteSpace: "nowrap",
+              }}>
+                <div style={{
+                  width: 8, height: 8, borderRadius: "50%",
+                  border: "1.5px solid currentColor",
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
+                  {isActive && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "currentColor" }} />}
+                </div>
+                {m.icon}
+                {m.label}
+              </button>
+            );
+          })}
         </div>
+
+        {/* Dark/light toggle */}
         <button onClick={onToggleDark} style={{
-          background: "none",
-          border: `0.5px solid ${dark ? "#334155" : "#e2e8f0"}`,
-          borderRadius: 6, padding: "5px 10px",
-          cursor: "pointer", fontSize: 12,
-          color: dark ? "#94a3b8" : "#64748b",
+          width: 32, height: 32, borderRadius: "50%",
+          border: `1px solid ${border}`, background: "none",
+          cursor: "pointer", display: "flex", alignItems: "center",
+          justifyContent: "center", color: muted, flexShrink: 0,
         }}>
-          {dark ? "Light" : "Dark"}
+          {dark ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3V1M8 15v-2M3 8H1M15 8h-2M4.5 4.5L3 3M13 13l-1.5-1.5M11.5 4.5L13 3M3 13l1.5-1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.3"/></svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M13 9A5 5 0 1 1 7 3a3.5 3.5 0 0 0 6 6z" fill="currentColor" opacity=".8"/></svg>
+          )}
         </button>
       </div>
-
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
     </div>
   );

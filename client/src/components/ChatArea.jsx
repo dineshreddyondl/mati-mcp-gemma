@@ -1,12 +1,72 @@
 /**
- * ChatArea.jsx — message list with mode tags and queue banner.
+ * ChatArea.jsx — messages with mode tags, queue banner, rotating think messages.
+ * Shows only messages matching current mode.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const MODE_META = {
-  internal: { label: "Internal data", color: "#1d4ed8", bg: "#eff6ff" },
-  general: { label: "General", color: "#16a34a", bg: "#f0fdf4" },
+  internal: { label: "Order reporting", color: "#1d4ed8", bg: "#eff6ff" },
+  general:  { label: "General", color: "#16a34a", bg: "#f0fdf4" },
   document: { label: "Document", color: "#d97706", bg: "#fffbeb" },
+};
+
+const THINK_MSGS = [
+  "Working on it, give me a moment...",
+  "Digging through your order data...",
+  "Running the query on MongoDB...",
+  "Crunching the numbers for you...",
+  "Pulling the records together...",
+  "Nearly done, just a few more seconds...",
+  "Almost there — finalising your results...",
+];
+
+const GENERAL_THINK_MSGS = [
+  "Thinking about your question...",
+  "Working on a response...",
+  "Almost done...",
+];
+
+const DOC_THINK_MSGS = [
+  "Reading through your document...",
+  "Analysing the content...",
+  "Extracting the relevant information...",
+  "Almost there...",
+];
+
+const SUGGESTIONS = {
+  internal: [
+    "Monthly order volume growth with percentage change",
+    "customer wise delivery turn around time report",
+    "Customer-wise month-on-month order growth",
+    "Monthly delivery performance trends",
+  ],
+  general: [
+    "Help me draft a client follow-up email",
+    "Summarise this meeting agenda",
+    "Explain a logistics concept",
+    "Help me prepare a presentation outline",
+  ],
+  document: [
+    "Upload a delivery report PDF",
+    "Upload a client invoice",
+    "Upload an Excel data export",
+    "Upload a contract document",
+  ],
+};
+
+const LANDING = {
+  internal: {
+    title: "ONDL AI powered reporting",
+    sub: "Ask Su-Mati about deliveries, revenue, client performance and more — running privately on our Mac Mini.",
+  },
+  general: {
+    title: "Ask Su-Mati anything",
+    sub: "Write emails, summarise meetings, brainstorm ideas, explain concepts — your general purpose AI assistant.",
+  },
+  document: {
+    title: "Upload a document to analyse",
+    sub: "Upload any file — PDF, Excel, CSV, Word, or images — and ask Su-Mati to extract insights, summarise, or answer questions.",
+  },
 };
 
 function QueueBanner({ position, estimatedWait, dark }) {
@@ -14,46 +74,55 @@ function QueueBanner({ position, estimatedWait, dark }) {
     <div style={{
       background: dark ? "#0c1626" : "#eff6ff",
       border: `0.5px solid ${dark ? "#1e3a5f" : "#bfdbfe"}`,
-      borderRadius: 10, padding: "10px 14px",
+      borderRadius: 10, padding: "10px 16px",
       fontSize: 13, color: dark ? "#93c5fd" : "#1e40af",
       display: "flex", alignItems: "center", gap: 10,
-      margin: "0 0 8px", flexShrink: 0,
+      marginBottom: 8, flexShrink: 0,
     }}>
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
         <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
         <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
       <span style={{ flex: 1 }}>
-        Your teammates are already querying Mati — you're position{" "}
-        <strong>#{position + 1}</strong>, est.{" "}
-        <strong>~{estimatedWait}s</strong>
+        Your teammates are already querying Su-Mati — you're position{" "}
+        <strong>#{position + 1}</strong>, est. <strong>~{estimatedWait}s</strong>
       </span>
-      <div style={{
-        width: 80, height: 3,
-        background: dark ? "#1e3a5f" : "#bfdbfe",
-        borderRadius: 2, overflow: "hidden",
-      }}>
-        <div style={{
-          height: "100%", background: dark ? "#3b82f6" : "#3b82f6",
-          borderRadius: 2, width: "30%",
-          animation: "qprog 3s ease-in-out infinite alternate",
-        }} />
+      <div style={{ width: 80, height: 3, background: dark ? "#1e3a5f" : "#bfdbfe", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ height: "100%", background: "#3b82f6", borderRadius: 2, width: "30%", animation: "qprog 3s ease-in-out infinite alternate" }} />
       </div>
       <style>{`@keyframes qprog{0%{width:15%}100%{width:70%}}`}</style>
     </div>
   );
 }
 
-function TypingIndicator({ dark }) {
+function ThinkingBubble({ mode, dark }) {
+  const [idx, setIdx] = useState(0);
+  const msgs = mode === "general" ? GENERAL_THINK_MSGS : mode === "document" ? DOC_THINK_MSGS : THINK_MSGS;
+
+  useEffect(() => {
+    const iv = setInterval(() => setIdx(i => (i + 1) % msgs.length), 1800);
+    return () => clearInterval(iv);
+  }, [mode]);
+
   return (
-    <div style={{ display: "flex", gap: 4, padding: "8px 14px" }}>
-      {[0, 1, 2].map((i) => (
-        <div key={i} style={{
-          width: 7, height: 7, borderRadius: "50%",
-          background: "#1d4ed8", opacity: 0.5,
-          animation: `bounce 1s ease-in-out ${i * 0.15}s infinite`,
-        }} />
-      ))}
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "12px 16px",
+      background: dark ? "#161b22" : "#ffffff",
+      border: `0.5px solid ${dark ? "#30363d" : "#e5e7eb"}`,
+      borderRadius: "4px 16px 16px 16px",
+      fontSize: 13, color: dark ? "#8b949e" : "#6b7280",
+      maxWidth: "80%",
+    }}>
+      <div style={{ display: "flex", gap: 3 }}>
+        {[0,1,2].map(i => (
+          <div key={i} style={{
+            width: 6, height: 6, borderRadius: "50%", background: "#1d4ed8", opacity: 0.4,
+            animation: `bounce 1s ease-in-out ${i*0.15}s infinite`,
+          }} />
+        ))}
+      </div>
+      <span>{msgs[idx]}</span>
       <style>{`@keyframes bounce{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-5px);opacity:1}}`}</style>
     </div>
   );
@@ -64,38 +133,31 @@ function Message({ msg, dark }) {
   const meta = MODE_META[msg.mode] || MODE_META.internal;
 
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: isUser ? "flex-end" : "flex-start",
-      marginBottom: 4,
-    }}>
+    <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: 4 }}>
       <div style={{ maxWidth: "80%" }}>
         {!isUser && msg.mode && (
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 4,
-            fontSize: 10, fontWeight: 500,
-            color: meta.color,
-            background: meta.bg,
-            borderRadius: 4, padding: "2px 7px", marginBottom: 5,
+            fontSize: 10, fontWeight: 600,
+            color: meta.color, background: meta.bg,
+            borderRadius: 4, padding: "2px 7px", marginBottom: 6,
           }}>
             {meta.label}
           </div>
         )}
         <div style={{
-          padding: "10px 14px",
-          borderRadius: isUser ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
-          background: isUser
-            ? "#1d4ed8"
-            : dark ? "#1e293b" : "#ffffff",
-          border: isUser ? "none" : `0.5px solid ${dark ? "#334155" : "#e2e8f0"}`,
-          color: isUser ? "#ffffff" : (dark ? "#f1f5f9" : "#0f172a"),
-          fontSize: 13, lineHeight: 1.65,
+          padding: "11px 16px",
+          borderRadius: isUser ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
+          background: isUser ? "#1d4ed8" : (dark ? "#161b22" : "#ffffff"),
+          border: isUser ? "none" : `0.5px solid ${dark ? "#30363d" : "#e5e7eb"}`,
+          color: isUser ? "#ffffff" : (dark ? "#e6edf3" : "#111827"),
+          fontSize: 14, lineHeight: 1.7,
           whiteSpace: "pre-wrap", wordBreak: "break-word",
         }}>
           {msg.content}
         </div>
         {msg.toolsUsed?.length > 0 && (
-          <div style={{ fontSize: 11, color: dark ? "#475569" : "#94a3b8", marginTop: 4, paddingLeft: 2 }}>
+          <div style={{ fontSize: 11, color: dark ? "#475569" : "#9ca3af", marginTop: 4, paddingLeft: 2 }}>
             Queried: {msg.toolsUsed.join(", ")}
           </div>
         )}
@@ -104,53 +166,51 @@ function Message({ msg, dark }) {
   );
 }
 
-const SUGGESTIONS = {
-  internal: ["How many orders this month?", "Revenue by company", "Order status breakdown", "Show latest 5 orders"],
-  general: ["Help me write an email", "Explain a concept", "Summarize something", "Brainstorm ideas"],
-  document: ["Upload a file to get started"],
-};
-
-export default function ChatArea({ messages, loading, queueInfo, mode, dark }) {
+export default function ChatArea({ messages, loading, queueInfo, mode, dark, onSuggestion }) {
   const bottomRef = useRef(null);
+  const bg = dark ? "#0d1117" : "#f0f2f5";
+  const surface = dark ? "#161b22" : "#ffffff";
+  const border = dark ? "#30363d" : "#e5e7eb";
+  const muted = dark ? "#8b949e" : "#6b7280";
+  const land = LANDING[mode] || LANDING.internal;
+
+  // Filter messages to current mode only
+  const filtered = messages.filter(m => !m.mode || m.mode === mode);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const bg = dark ? "#0f172a" : "#f8fafc";
-  const muted = dark ? "#475569" : "#94a3b8";
-  const surface = dark ? "#1e293b" : "#ffffff";
-  const border = dark ? "#334155" : "#e2e8f0";
-
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: 16, background: bg, display: "flex", flexDirection: "column" }}>
-      {messages.length === 0 ? (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-          <div style={{ fontSize: 36 }}>
-            {mode === "internal" ? "📦" : mode === "general" ? "💬" : "📄"}
+    <div style={{ flex: 1, overflowY: "auto", padding: 20, background: bg, display: "flex", flexDirection: "column" }}>
+      {filtered.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.5px", color: dark ? "#e6edf3" : "#111827" }}>
+            Su-Mati
           </div>
-          <div style={{ fontSize: 16, fontWeight: 500, color: dark ? "#94a3b8" : "#64748b" }}>
-            {mode === "internal" && "Ask Mati about ONDL orders"}
-            {mode === "general" && "Ask Mati anything"}
-            {mode === "document" && "Upload a document to analyze"}
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.5px", color: dark ? "#e6edf3" : "#111827", textAlign: "center", lineHeight: 1.3 }}
+            dangerouslySetInnerHTML={{ __html: land.title }} />
+          <div style={{ fontSize: 14, color: muted, textAlign: "center", maxWidth: 420, lineHeight: 1.6 }}>
+            {land.sub}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 480 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 520 }}>
             {(SUGGESTIONS[mode] || []).map((s) => (
-              <div key={s} style={{
-                background: surface, border: `0.5px solid ${border}`,
-                borderRadius: 20, padding: "6px 14px",
-                fontSize: 13, color: dark ? "#94a3b8" : "#64748b", cursor: "default",
-              }}>{s}</div>
+              <button key={s} onClick={() => onSuggestion(s)} style={{
+                padding: "8px 16px", borderRadius: 100,
+                border: `1px solid ${border}`, background: surface,
+                fontSize: 13, color: dark ? "#c9d1d9" : "#374151",
+                cursor: "pointer", fontWeight: 500,
+              }}>{s}</button>
             ))}
           </div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {messages.map((msg, i) => <Message key={i} msg={msg} dark={dark} />)}
+          {filtered.map((msg, i) => <Message key={i} msg={msg} dark={dark} />)}
           {loading && queueInfo?.position > 0 && (
             <QueueBanner position={queueInfo.position} estimatedWait={queueInfo.estimatedWait} dark={dark} />
           )}
-          {loading && <TypingIndicator dark={dark} />}
+          {loading && <ThinkingBubble mode={mode} dark={dark} />}
         </div>
       )}
       <div ref={bottomRef} />

@@ -10,6 +10,20 @@ export interface AggregateParams {
   pipeline: Record<string, unknown>[];
 }
 
+// Convert ISO date strings to Date objects in pipeline
+function convertDates(obj: unknown): unknown {
+  if (typeof obj === "string" && /^\d{4}-\d{2}-\d{2}T/.test(obj)) {
+    return new Date(obj);
+  }
+  if (Array.isArray(obj)) return obj.map(convertDates);
+  if (obj && typeof obj === "object") {
+    return Object.fromEntries(
+      Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, convertDates(v)])
+    );
+  }
+  return obj;
+}
+
 /**
  * Tool: aggregate
  * Runs a MongoDB aggregation pipeline on a collection.
@@ -23,7 +37,6 @@ export async function aggregate(params: AggregateParams): Promise<{
 }> {
   const { collection, pipeline } = params;
 
-  // ── Security checkpoint 1: Collection blocklist ──
   if (!isCollectionAllowed(collection)) {
     throw new Error(
       `Access denied: The collection "${collection}" is restricted. ` +
@@ -31,7 +44,6 @@ export async function aggregate(params: AggregateParams): Promise<{
     );
   }
 
-  // ── Security checkpoint 2: Block dangerous pipeline stages ──
   const blockedStages = ["$out", "$merge", "$collStats", "$indexStats", "$planCacheStats"];
   for (const stage of pipeline) {
     const stageKeys = Object.keys(stage);
@@ -43,8 +55,6 @@ export async function aggregate(params: AggregateParams): Promise<{
         );
       }
     }
-
-    // Block $lookup into restricted collections
     if ("$lookup" in stage) {
       const lookup = stage.$lookup as Record<string, unknown>;
       if (lookup.from && !isCollectionAllowed(lookup.from as string)) {
@@ -58,15 +68,16 @@ export async function aggregate(params: AggregateParams): Promise<{
   const db = await getDatabase();
   const coll = db.collection(collection);
 
-  // Add a $limit at the end if none exists to prevent unbounded results
   const hasLimit = pipeline.some((stage) => "$limit" in stage);
   const safePipeline = hasLimit
     ? pipeline
     : [...pipeline, { $limit: MAX_RESULTS }];
 
-  const rawResults = await coll.aggregate(safePipeline).toArray();
+  const convertedPipeline = convertDates(safePipeline) as Record<string, unknown>[];
+  console.log('[Aggregate Pipeline]', JSON.stringify(convertedPipeline, null, 2));
 
-  // ── Security checkpoint 3: Field redaction on output ──
+  const rawResults = await coll.aggregate(convertedPipeline).toArray();
+
   const cleanResults = redactDocuments(
     rawResults as Record<string, unknown>[]
   );
