@@ -1,6 +1,7 @@
 /**
  * ChatArea.jsx — messages with mode tags, queue banner, rotating think messages.
  * Shows only messages matching current mode.
+ * Fixed scroll: uses chatRef on container instead of scrollIntoView.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -35,10 +36,10 @@ const DOC_THINK_MSGS = [
 
 const SUGGESTIONS = {
   internal: [
-    "Monthly order volume growth with percentage change",
-    "customer wise delivery turn around time report",
-    "Customer-wise month-on-month order growth",
-    "Monthly delivery performance trends",
+    "Month on Month order growth",
+    "Customer wise order volume",
+    "Destination wise order distribution",
+    "Destination with highest order volume",
   ],
   general: [
     "Help me draft a client follow-up email",
@@ -134,7 +135,7 @@ function Message({ msg, dark }) {
 
   return (
     <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: 4 }}>
-      <div style={{ maxWidth: "80%" }}>
+      <div style={{ maxWidth: "85%" }}>
         {!isUser && msg.mode && (
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 4,
@@ -166,8 +167,8 @@ function Message({ msg, dark }) {
   );
 }
 
-export default function ChatArea({ messages, loading, queueInfo, mode, dark, onSuggestion }) {
-  const bottomRef = useRef(null);
+export default function ChatArea({ messages, loading, queueInfo, mode, dark, onSuggestion, isMobile }) {
+  const chatRef = useRef(null);
   const bg = dark ? "#0d1117" : "#f0f2f5";
   const surface = dark ? "#161b22" : "#ffffff";
   const border = dark ? "#30363d" : "#e5e7eb";
@@ -177,29 +178,45 @@ export default function ChatArea({ messages, loading, queueInfo, mode, dark, onS
   // Filter messages to current mode only
   const filtered = messages.filter(m => !m.mode || m.mode === mode);
 
+  // Scroll to bottom inside the chat container — not the whole page
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (filtered.length > 0 && chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
   }, [messages, loading]);
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: 20, background: bg, display: "flex", flexDirection: "column" }}>
+    <div
+      ref={chatRef}
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: isMobile ? "12px 12px" : "20px",
+        background: bg,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {filtered.length === 0 ? (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.5px", color: dark ? "#e6edf3" : "#111827" }}>
+          <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, letterSpacing: "-0.5px", color: dark ? "#e6edf3" : "#111827" }}>
             Su-Mati
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.5px", color: dark ? "#e6edf3" : "#111827", textAlign: "center", lineHeight: 1.3 }}
+          <div style={{ fontSize: isMobile ? 17 : 22, fontWeight: 700, letterSpacing: "-0.5px", color: dark ? "#e6edf3" : "#111827", textAlign: "center", lineHeight: 1.3 }}
             dangerouslySetInnerHTML={{ __html: land.title }} />
-          <div style={{ fontSize: 14, color: muted, textAlign: "center", maxWidth: 420, lineHeight: 1.6 }}>
+          <div style={{ fontSize: isMobile ? 13 : 14, color: muted, textAlign: "center", maxWidth: 420, lineHeight: 1.6, padding: "0 8px" }}>
             {land.sub}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 520 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: isMobile ? "100%" : 520, padding: "0 8px" }}>
             {(SUGGESTIONS[mode] || []).map((s) => (
               <button key={s} onClick={() => onSuggestion(s)} style={{
-                padding: "8px 16px", borderRadius: 100,
+                padding: isMobile ? "10px 14px" : "8px 16px",
+                borderRadius: 100,
                 border: `1px solid ${border}`, background: surface,
-                fontSize: 13, color: dark ? "#c9d1d9" : "#374151",
+                fontSize: isMobile ? 13 : 13,
+                color: dark ? "#c9d1d9" : "#374151",
                 cursor: "pointer", fontWeight: 500,
+                textAlign: "center",
               }}>{s}</button>
             ))}
           </div>
@@ -213,7 +230,6 @@ export default function ChatArea({ messages, loading, queueInfo, mode, dark, onS
           {loading && <ThinkingBubble mode={mode} dark={dark} />}
         </div>
       )}
-      <div ref={bottomRef} />
     </div>
   );
 }

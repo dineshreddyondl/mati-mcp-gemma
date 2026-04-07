@@ -1,7 +1,6 @@
 /**
  * web.ts — Su-Mati Express server.
- * Supports 3 modes: internal (MongoDB), general, document.
- * Uses LLM queue for concurrent request handling.
+ * Uses Orders_mini — flat reporting collection for fast, accurate LLM queries.
  */
 import "./env.js";
 import { config } from "./config.js";
@@ -19,7 +18,6 @@ import type { Message, ToolDefinition } from "./llm.js";
 import { llmQueue } from "./queue.js";
 import { logSecurityConfig } from "./security.js";
 import { getDatabase, closeDatabase } from "./mongo.js";
-import { listCollections } from "./tools/listCollections.js";
 import { queryCollection } from "./tools/queryCollection.js";
 import { aggregate } from "./tools/aggregate.js";
 
@@ -33,109 +31,120 @@ CRITICAL RULES — NEVER BREAK THESE:
 3. NEVER say "here is the pipeline" or "I will run this query" — just run it.
 4. After getting tool results, format them clearly for the user.
 5. If tool returns empty, say "No data found" — never make up numbers.
-6. When user asks for "monthly", "quarterly" or "growth" without specifying dates,
-   ALWAYS use the full data range:
-   {"createdAt":{"$gte":{"$date":"2025-06-01T00:00:00.000Z"},"$lte":{"$date":"2026-04-05T00:00:00.000Z"}}}
-7. For totals or "all time" queries — use NO date filter at all.
-NEVER show mathematical formulas or LaTeX expressions like \( \frac{} \).
-   Always show only the final calculated result as a plain number.
-   Example: "Jun→Jul: +96.7%" NOT "\( \frac{438-223}{223} \times 100 \)"
+6. NEVER show mathematical formulas or LaTeX. Always show only the final result. Example: "Jun→Jul: +96.7%" not "\( \frac{}{} \)"
+7. For "monthly", "quarterly" or "growth" without dates — use full range: createdAt >= 2025-06-01
+8. For totals — use NO date filter at all.
+9. ALWAYS use $regex with $options "i" for companyName searches.
+10. NEVER call list_collections. Always use Orders_mini collection directly.
 
+═══ COLLECTION: Orders_mini ═══
+Flat reporting collection — all fields are top-level, no nesting.
 
-═══ VERIFIED DATABASE SCHEMA ═══
-COLLECTION: SaaS_Orders (15,000+ orders)
+IDENTIFIERS:
+- orderId (string) e.g. "WKFT5000"
+- externalOrderId (string)
+- awb (string)
 
-TOP LEVEL FIELDS:
-- orderId: string (e.g. "WKFT08002")
-- orderStatus: string — placed, out_for_pickup, picked_up, fm_package_verified,
-  lr_generated_and_uploaded, in_transit_to_transhipment_point, in_transit_to_destination_city,
-  waiting_for_arrival, out_for_delivery, delivered, cancelled, rto, pickup_failed
+ORDER STATUS:
+- orderStatus: placed, out_for_pickup, picked_up, fm_package_verified,
+  lr_generated_and_uploaded, in_transit_to_transhipment_point,
+  in_transit_to_destination_city, waiting_for_arrival, out_for_delivery,
+  delivered, cancelled, rto, pickup_failed, handed_over_to_midmile_shipper
 - isRtoOrder: boolean
-- shipperFulfillmentType: string (e.g. "dap-pan")
-- paymentStatus: string ("successful", "pending", "failed")
-- createdAt: ISODate
-- updatedAt: ISODate
-- estimatedDeliveryDate: ISODate
 
-PICKUP LOCATION (start):
-- start.address.mapData.city
-- start.address.mapData.state
-- start.address.mapData.pincode
+CUSTOMER:
+- companyName (e.g. "Wakefit innovation", "Duroflex", "The sleep company")
+- orgId
+- shipperId
 
-DELIVERY LOCATION (end):
-- end.address.mapData.city
-- end.address.mapData.state
-- end.address.mapData.pincode
+LOCATIONS (all flat, no nesting):
+- pickupCity, pickupState
+- deliveryCity, deliveryState, deliveryPincode
 
-PACKAGE (array — use package[0] or $unwind):
-- package.weight (kg)
-- package.l, package.b, package.h (dimensions in cm)
-- package.awb (airway bill)
-- package.status (package-level status)
-- package.pkgType ("gunny bag", "carton box", etc.)
-- package.cost (package cost as number)
-- package.sku[0].sku_name, sku[0].qty, sku[0].sku_value
+COST:
+- packageCost (number)
+- midMileCost (number)
+- totalCost (number) = packageCost + midMileCost
+
+PACKAGE:
+- packageWeight (kg)
+- pkgType ("gunny bag", "carton box")
+- skuName, skuQty
 
 PAYMENT:
 - paymentStatus: "successful", "pending", "failed"
-- paymentInfo[0].paymentMethod: "wallet", "cod", "online"
-- paymentInfo[0].paid: boolean
+- paymentMethod: "wallet", "cod", "online", "paid"
 
-STAKEHOLDERS:
-- stakeholders.bookingUserDetails.companyName (e.g. "Wakefit innovation", "Duroflex", "The sleep company")
-- stakeholders.bookingUserDetails.orgId
-- stakeholders.transporterDetails.companyUid
+DATES:
+- createdAt (ISODate) — order creation
+- updatedAt (ISODate)
+- estimatedDeliveryDate (ISODate)
+- deliveredAt (ISODate) — actual delivery time
+- yearMonth (string) e.g. "2025-12" — pre-calculated for monthly grouping
 
-MILE-WISE:
-- firstMile.orderStatus, firstMile.city
-- midMile.orderStatus, midMile.city
-- lastMile.orderStatus, lastMile.city
+PRE-CALCULATED FIELDS (use these directly — no calculation needed):
+- deliveryDays (number) — days from createdAt to deliveredAt
+- isDeliveredOnTime (boolean) — deliveredAt <= estimatedDeliveryDate
 
 IMPORTANT DATE CONTEXT:
 - Data exists from June 2025 to April 2026 ONLY
 - Current date is April 2026
-- NEVER query dates before June 2025
 - For "last 3 months": createdAt >= 2026-01-01
 - For "last month": createdAt >= 2026-03-01 and < 2026-04-01
 - For "this month": createdAt >= 2026-04-01
 - For "all time" or "total" — NO date filter
 
 ═══ QUERY RULES ═══
-1. NEVER return full documents. ALWAYS use aggregate with $project.
+1. All fields are flat — NO nested paths like $stakeholders.x or $start.address.x
 2. For counting/grouping: use $group directly.
 3. Default limit: 10 unless user asks for more.
-4. For revenue/cost: use package[0].cost — first $unwind packages then $group with $sum on "package.cost".
-5. Company filter: {"stakeholders.bookingUserDetails.companyName": {"$regex": "wakefit", "$options": "i"}}
-6. RTO filter: {"$or": [{"orderStatus": "rto"}, {"isRtoOrder": true}]}
-7. Delivered filter: {"orderStatus": "delivered"}
-8. Aging orders (pending > N days): {"orderStatus": {"$nin": ["delivered","cancelled","rto"]}, "createdAt": {"$lte": <date N days ago>}}
+4. Company filter: {"companyName": {"$regex": "wakefit", "$options": "i"}}
+5. RTO filter: {"$or": [{"orderStatus": "rto"}, {"isRtoOrder": true}]}
+6. For TAT/delivery time: use deliveryDays field directly — no $dateDiff needed.
+7. For on-time delivery: use isDeliveredOnTime field directly.
+8. For monthly grouping: use yearMonth field directly — no $dateToString needed.
 9. Format as clean markdown tables. Use Indian number format with commas.
 10. Be concise — answer first, offer follow-ups after.
 
 ═══ VERIFIED EXAMPLE QUERIES ═══
 Q: "Total orders count" →
-aggregate SaaS_Orders with pipeline: [{"$count":"total"}]
+aggregate Orders_mini: [{"$count":"total"}]
 
 Q: "Customer wise order distribution last 3 months" →
-aggregate SaaS_Orders with pipeline: [{"$match":{"createdAt":{"$gte":new Date("2026-01-01T00:00:00.000Z")}}},{"$group":{"_id":"$stakeholders.bookingUserDetails.companyName","orders":{"$sum":1}}},{"$sort":{"orders":-1}},{"$limit":10}]
+aggregate Orders_mini: [{"$match":{"createdAt":{"$gte":new Date("2026-01-01T00:00:00.000Z")}}},{"$group":{"_id":"$companyName","orders":{"$sum":1}}},{"$sort":{"orders":-1}},{"$limit":10}]
 
 Q: "Monthly order count" →
-aggregate SaaS_Orders with pipeline: [{"$project":{"yearMonth":{"$dateToString":{"date":"$createdAt","format":"%Y-%m"}}}},{"$group":{"_id":"$yearMonth","count":{"$sum":1}}},{"$sort":{"_id":1}}]
+aggregate Orders_mini: [{"$group":{"_id":"$yearMonth","count":{"$sum":1}}},{"$sort":{"_id":1}}]
 
 Q: "Total RTO shipments" →
-aggregate SaaS_Orders with pipeline: [{"$match":{"$or":[{"orderStatus":"rto"},{"isRtoOrder":true}]}},{"$count":"totalRTO"}]
+aggregate Orders_mini: [{"$match":{"$or":[{"orderStatus":"rto"},{"isRtoOrder":true}]}},{"$count":"totalRTO"}]
 
 Q: "Aging orders more than 10 days" →
-aggregate SaaS_Orders with pipeline: [{"$match":{"orderStatus":{"$nin":["delivered","cancelled","rto"]},"createdAt":{"$lte":new Date(Date.now()-10*24*60*60*1000)}}},{"$project":{"orderId":1,"orderStatus":1,"createdAt":1,"company":"$stakeholders.bookingUserDetails.companyName","city":"$end.address.mapData.city"}},{"$limit":20}]
+aggregate Orders_mini: [{"$match":{"orderStatus":{"$nin":["delivered","cancelled","rto"]},"createdAt":{"$lte":new Date(Date.now()-10*24*60*60*1000)}}},{"$project":{"orderId":1,"orderStatus":1,"createdAt":1,"companyName":1,"deliveryCity":1}},{"$limit":20}]
 
 Q: "Client wise performance report" →
-aggregate SaaS_Orders with pipeline: [{"$group":{"_id":"$stakeholders.bookingUserDetails.companyName","total":{"$sum":1},"delivered":{"$sum":{"$cond":[{"$eq":["$orderStatus","delivered"]},1,0]}},"rto":{"$sum":{"$cond":[{"$or":[{"$eq":["$orderStatus","rto"]},{"$eq":["$isRtoOrder",true]}]},1,0]}}}},{"$sort":{"total":-1}},{"$limit":10}]
+aggregate Orders_mini: [{"$group":{"_id":"$companyName","total":{"$sum":1},"delivered":{"$sum":{"$cond":[{"$eq":["$orderStatus","delivered"]},1,0]}},"rto":{"$sum":{"$cond":[{"$or":[{"$eq":["$orderStatus","rto"]},{"$eq":["$isRtoOrder",true]}]},1,0]}}}},{"$sort":{"total":-1}},{"$limit":10}]
 
 Q: "Order status breakdown" →
-aggregate SaaS_Orders with pipeline: [{"$group":{"_id":"$orderStatus","count":{"$sum":1}}},{"$sort":{"count":-1}}]
+aggregate Orders_mini: [{"$group":{"_id":"$orderStatus","count":{"$sum":1}}},{"$sort":{"count":-1}}]
 
 Q: "City wise delivery volume" →
-aggregate SaaS_Orders with pipeline: [{"$group":{"_id":"$end.address.mapData.city","count":{"$sum":1}}},{"$sort":{"count":-1}},{"$limit":15}]`,
+aggregate Orders_mini: [{"$group":{"_id":"$deliveryCity","count":{"$sum":1}}},{"$sort":{"count":-1}},{"$limit":15}]
+
+Q: "Customer delivery performance - average fastest slowest days" →
+aggregate Orders_mini: [{"$match":{"orderStatus":"delivered","deliveryDays":{"$ne":null}}},{"$group":{"_id":"$companyName","avgDays":{"$avg":"$deliveryDays"},"fastestDays":{"$min":"$deliveryDays"},"slowestDays":{"$max":"$deliveryDays"},"totalDelivered":{"$sum":1}}},{"$sort":{"avgDays":1}},{"$limit":10}]
+
+Q: "Monthly order growth" →
+aggregate Orders_mini: [{"$group":{"_id":"$yearMonth","count":{"$sum":1}}},{"$sort":{"_id":1}}]
+
+Q: "On time delivery rate by customer" →
+aggregate Orders_mini: [{"$match":{"orderStatus":"delivered"}},{"$group":{"_id":"$companyName","total":{"$sum":1},"onTime":{"$sum":{"$cond":[{"$eq":["$isDeliveredOnTime",true]},1,0]}}}},{"$addFields":{"onTimeRate":{"$multiply":[{"$divide":["$onTime","$total"]},100]}}},{"$sort":{"onTimeRate":-1}},{"$limit":10}]
+
+Q: "Revenue by customer" →
+aggregate Orders_mini: [{"$group":{"_id":"$companyName","totalRevenue":{"$sum":"$totalCost"},"orders":{"$sum":1}}},{"$sort":{"totalRevenue":-1}},{"$limit":10}]
+
+Q: "Order status for specific order" →
+aggregate Orders_mini: [{"$match":{"orderId":"WKFT5000"}},{"$project":{"orderId":1,"orderStatus":1,"companyName":1,"pickupCity":1,"deliveryCity":1,"createdAt":1,"deliveredAt":1,"deliveryDays":1}}]`,
 
   general: `You are Su-Mati, a helpful AI assistant for ONDL team members.
 You can help with anything — writing, analysis, explanations, brainstorming, coding, math, or general questions.
@@ -157,8 +166,6 @@ Format responses clearly with markdown when appropriate.
 async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
   try {
     switch (name) {
-      case "list_collections":
-        return JSON.stringify(await listCollections(), null, 2);
       case "query_collection":
         return JSON.stringify(await queryCollection({
           collection: args.collection as string,
@@ -183,13 +190,8 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 function getMCPTools() {
   return [
     {
-      name: "list_collections",
-      description: "List all available MongoDB collections.",
-      inputSchema: { type: "object" as const, properties: {}, required: [] as string[] },
-    },
-    {
       name: "query_collection",
-      description: "Query a MongoDB collection with filters, sorting, pagination.",
+      description: "Query Orders_mini collection with filters, sorting, pagination.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -204,7 +206,7 @@ function getMCPTools() {
     },
     {
       name: "aggregate",
-      description: "Run aggregation pipeline. Prefer for count/group/sum/average.",
+      description: "Run aggregation pipeline on Orders_mini. Use for all count/group/sum/average queries.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -255,7 +257,6 @@ if (clientBuilt) {
 let llm: OllamaClient;
 let internalTools: ToolDefinition[];
 
-// ── Health ───────────────────────────────────────────────────────────
 app.get("/api/health", async (_req, res) => {
   try {
     const db = await getDatabase();
@@ -271,7 +272,6 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-// ── Chat ─────────────────────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   try {
     const { messages, mode = "internal", documentContent } = req.body as {
@@ -311,14 +311,12 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// ── SPA fallback ─────────────────────────────────────────────────────
 if (clientBuilt) {
   app.get("*", (_req, res) => {
     res.sendFile(resolve(clientPath, "index.html"));
   });
 }
 
-// ── Start ────────────────────────────────────────────────────────────
 async function main() {
   console.log("");
   console.log("╔══════════════════════════════════════╗");
@@ -336,6 +334,7 @@ async function main() {
   app.listen(config.port, () => {
     console.log(`[Su-Mati] Running at http://localhost:${config.port}`);
     console.log(`[Su-Mati] Modes: internal, general, document`);
+    console.log(`[Su-Mati] Collection: Orders_mini @ llm-db`);
     console.log("");
   });
 }

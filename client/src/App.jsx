@@ -1,7 +1,7 @@
 /**
  * App.jsx — Su-Mati main app.
- * Features: 3 modes with isolated chat views, Mac Mini health check,
- * localStorage conversation history, queue handling.
+ * Mobile: hamburger opens sidebar overlay, icon-only mode switcher.
+ * Desktop: unchanged layout.
  */
 import { useState, useEffect } from "react";
 import Header from "./components/Header.jsx";
@@ -22,10 +22,11 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [mode, setMode] = useState("internal");
   const [macOnline, setMacOnline] = useState(true);
-  const [modelName, setModelName] = useState("Google Gemma");
   const [loading, setLoading] = useState(false);
   const [queueInfo, setQueueInfo] = useState(null);
   const [documentContent, setDocumentContent] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const {
     grouped, activeId, activeConversation,
@@ -33,15 +34,17 @@ export default function App() {
     deleteConversation, selectConversation,
   } = useConversations();
 
-  // Health check every 30 seconds
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   useEffect(() => {
     const check = () => {
       fetch(`${API_URL}/api/health`)
         .then(r => r.json())
-        .then(d => {
-          setMacOnline(d.status === "ok");
-          if (d.model) setModelName(d.model);
-        })
+        .then(d => setMacOnline(d.status === "ok"))
         .catch(() => setMacOnline(false));
     };
     check();
@@ -49,12 +52,8 @@ export default function App() {
     return () => clearInterval(iv);
   }, []);
 
-  // Start first conversation on mount
-  useEffect(() => {
-    if (!activeId) newConversation(mode);
-  }, []);
+  useEffect(() => { if (!activeId) newConversation(mode); }, []);
 
-  // Sync mode when switching conversations
   useEffect(() => {
     if (activeConversation && activeConversation.mode !== mode) {
       setMode(activeConversation.mode);
@@ -69,11 +68,13 @@ export default function App() {
   const handleNewChat = () => {
     newConversation(mode);
     setDocumentContent(null);
+    setSidebarOpen(false);
   };
 
   const handleSelectConversation = (id) => {
     selectConversation(id);
     setDocumentContent(null);
+    setSidebarOpen(false);
   };
 
   const handleSend = async (text) => {
@@ -85,10 +86,7 @@ export default function App() {
     setQueueInfo(null);
 
     try {
-      const history = activeConversation
-        ? [...activeConversation.messages, userMsg]
-        : [userMsg];
-
+      const history = activeConversation ? [...activeConversation.messages, userMsg] : [userMsg];
       const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,26 +96,12 @@ export default function App() {
           documentContent: mode === "document" ? documentContent : undefined,
         }),
       });
-
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-
-      if (data.queuePosition > 0) {
-        setQueueInfo({ position: data.queuePosition, estimatedWait: data.estimatedWait });
-      }
-
-      addMessage(convId, {
-        role: "assistant",
-        content: data.content,
-        mode,
-        toolsUsed: data.toolsUsed,
-      });
+      if (data.queuePosition > 0) setQueueInfo({ position: data.queuePosition, estimatedWait: data.estimatedWait });
+      addMessage(convId, { role: "assistant", content: data.content, mode, toolsUsed: data.toolsUsed });
     } catch (err) {
-      addMessage(convId, {
-        role: "assistant",
-        content: `Something went wrong: ${err.message}`,
-        mode,
-      });
+      addMessage(convId, { role: "assistant", content: `Something went wrong: ${err.message}`, mode });
     } finally {
       setLoading(false);
       setQueueInfo(null);
@@ -131,8 +115,10 @@ export default function App() {
 
   return (
     <div style={{
-      height: "100vh", display: "flex", flexDirection: "column",
-      background: bg, fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+      position: "fixed", inset: 0,
+      display: "flex", flexDirection: "column",
+      background: bg,
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
     }}>
       <Header
         mode={mode}
@@ -140,56 +126,79 @@ export default function App() {
         dark={dark}
         onToggleDark={() => setDark(d => !d)}
         macOnline={macOnline}
+        isMobile={isMobile}
+        onMenuToggle={() => setSidebarOpen(o => !o)}
       />
 
-      {/* Offline banner */}
       {!macOnline && (
         <div style={{
           background: dark ? "#1a0505" : "#fef2f2",
           borderBottom: `0.5px solid ${dark ? "#7f1d1d" : "#fecaca"}`,
-          padding: "8px 20px", fontSize: 12,
+          padding: "8px 16px", fontSize: 12,
           color: dark ? "#f87171" : "#dc2626",
           display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
         }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/>
-            <path d="M8 5v3M8 11v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          Mac Mini appears to be offline — Su-Mati is unreachable. Please check the server and restart the process manager.
+          Mac Mini appears to be offline — Su-Mati is unreachable.
         </div>
       )}
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar
-          grouped={grouped}
-          activeId={activeId}
-          onSelect={handleSelectConversation}
-          onNew={handleNewChat}
-          onDelete={deleteConversation}
-          dark={dark}
-        />
+      <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Mobile overlay — tap outside to close sidebar */}
+        {isMobile && sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 10 }}
+          />
+        )}
+
+        {/* Sidebar — slides in on mobile, always visible on desktop */}
+        <div style={{
+          position: isMobile ? "absolute" : "relative",
+          left: isMobile ? (sidebarOpen ? 0 : -280) : 0,
+          top: 0, bottom: 0,
+          zIndex: isMobile ? 20 : 1,
+          transition: "left 0.25s ease",
+          flexShrink: 0,
+        }}>
+          <Sidebar
+            grouped={grouped}
+            activeId={activeId}
+            onSelect={handleSelectConversation}
+            onNew={handleNewChat}
+            onDelete={deleteConversation}
+            dark={dark}
+          />
+        </div>
+
+        {/* Main content */}
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          overflow: "hidden", minWidth: 0,
+        }}>
           {/* Context bar */}
           <div style={{
-            padding: "5px 20px", fontSize: 11, fontWeight: 500,
+            padding: "5px 16px", fontSize: 11, fontWeight: 500,
             background: dark ? ctx.darkBg : ctx.bg,
             color: dark ? ctx.darkColor : ctx.color,
             borderBottom: `0.5px solid ${border}`,
-            flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
+            flexShrink: 0,
           }}>
             {ctx.text}
           </div>
 
+          {/* Chat area */}
           <ChatArea
             messages={messages}
             loading={loading}
             queueInfo={queueInfo}
             mode={mode}
             dark={dark}
-            onSuggestion={(s) => handleSend(s)}
+            onSuggestion={handleSend}
+            isMobile={isMobile}
           />
 
+          {/* Input bar */}
           <InputBar
             mode={mode}
             onSend={handleSend}

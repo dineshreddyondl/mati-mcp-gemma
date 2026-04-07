@@ -2,6 +2,7 @@
  * Header.jsx — Su-Mati top bar
  * Left: ONDL logo | Su-Mati + Mac Mini status | Powered by Google Gemma
  * Right: mode switcher (radio style) + dark/light icon toggle
+ * Mobile: hamburger + icon-only modes, hide Gemma label
  */
 
 const MODES = [
@@ -28,7 +29,7 @@ const MODES = [
   },
 ];
 
-export default function Header({ mode, onModeChange, dark, onToggleDark, macOnline }) {
+export default function Header({ mode, onModeChange, dark, onToggleDark, macOnline, isMobile, onMenuToggle }) {
   const border = dark ? "#30363d" : "#e5e7eb";
   const bg = dark ? "#161b22" : "#ffffff";
   const muted = dark ? "#8b949e" : "#6b7280";
@@ -36,20 +37,33 @@ export default function Header({ mode, onModeChange, dark, onToggleDark, macOnli
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "0 20px", height: 60, background: bg,
+      padding: "0 16px", height: 56, background: bg,
       borderBottom: `0.5px solid ${border}`,
-      gap: 16, flexShrink: 0,
+      gap: 12, flexShrink: 0,
       fontFamily: "'Inter', system-ui, sans-serif",
     }}>
 
       {/* ── Left ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-        <img src="/ondl-logo.svg" alt="ONDL" style={{ height: 20, filter: dark ? "brightness(0) invert(1)" : "none" }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+
+        {/* Hamburger — mobile only */}
+        {isMobile && (
+          <button onClick={onMenuToggle} style={{
+            background: "none", border: "none", cursor: "pointer",
+            padding: 4, color: muted, display: "flex", alignItems: "center",
+          }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M2 4h14M2 9h14M2 14h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
+
+        <img src="/ondl-logo.svg" alt="ONDL" style={{ height: 18, filter: dark ? "brightness(0) invert(1)" : "none" }} />
         <div style={{ width: 1, height: 22, background: border }} />
 
         {/* Su-Mati + Mac Mini status */}
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.3px", color: dark ? "#e6edf3" : "#111827", lineHeight: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.3px", color: dark ? "#e6edf3" : "#111827", lineHeight: 1 }}>
             Su-Mati
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -58,33 +72,50 @@ export default function Header({ mode, onModeChange, dark, onToggleDark, macOnli
               background: macOnline ? "#22c55e" : "#ef4444",
               animation: macOnline ? "pulse 2s infinite" : "none",
             }} />
-            <span style={{ fontSize: 10, fontWeight: 500, color: macOnline ? "#16a34a" : "#ef4444" }}>
-              {macOnline ? "Running on Mac Mini" : "Mac Mini offline"}
+            <span style={{ fontSize: 10, fontWeight: 500, color: macOnline ? "#16a34a" : "#ef4444", whiteSpace: "nowrap" }}>
+              {macOnline ? "Running on Mac Mini" : "Offline"}
             </span>
           </div>
         </div>
 
-        <div style={{ width: 1, height: 22, background: border }} />
-
-        {/* Powered by Google Gemma */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <div style={{ display: "flex", gap: 2 }}>
-            {["#4285f4","#ea4335","#fbbc04","#34a853"].map((c, i) => (
-              <div key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: c }} />
-            ))}
-          </div>
-          <span style={{ fontSize: 11, color: muted }}>Powered by Google Gemma</span>
-        </div>
+        {/* Powered by Google Gemma — desktop only */}
+        {!isMobile && (
+          <>
+            <div style={{ width: 1, height: 22, background: border }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ display: "flex", gap: 2 }}>
+                {["#4285f4","#ea4335","#fbbc04","#34a853"].map((c, i) => (
+                  <div key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: c }} />
+                ))}
+              </div>
+              <span style={{ fontSize: 11, color: muted }}>Powered by Google Gemma</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Right ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        {/* Mode switcher */}
-        <div style={{ display: "flex", gap: 5 }}>
+
+        {/* Mode switcher — full labels on desktop, icon-only on mobile */}
+        <div style={{ display: "flex", gap: isMobile ? 4 : 5 }}>
           {MODES.map((m) => {
             const isActive = m.id === mode;
             const s = dark ? (isActive ? m.activeDark : null) : (isActive ? m.active : null);
-            return (
+            return isMobile ? (
+              // Mobile: icon-only square buttons
+              <button key={m.id} onClick={() => onModeChange(m.id)} style={{
+                width: 34, height: 34, borderRadius: 8,
+                border: `1.5px solid ${isActive ? (s?.border || border) : border}`,
+                background: isActive ? (s?.bg || "transparent") : "transparent",
+                color: isActive ? (s?.color || muted) : muted,
+                cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center",
+              }}>
+                {m.icon}
+              </button>
+            ) : (
+              // Desktop: full pill buttons
               <button key={m.id} onClick={() => onModeChange(m.id)} style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "6px 14px", borderRadius: 100,
